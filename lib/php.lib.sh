@@ -26,8 +26,12 @@ export SHELL_LIBS_DIRPATH="$_Php_sourceDirpath"; [[ -d "$SHELL_LIBS_DIRPATH" ]] 
 # shellcheck disable=SC1091
 [[ "${SHELL_LIB_UI:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/ui.lib.sh" && [[ "${SHELL_LIB_UI:+s}" != '' ]] || exit 97; };
 
+# ----------------------------------------------------------------
+
+declare SHELL_LIB_PHP; SHELL_LIB_PHP="$( sha256sum -b -- "$_Php_sourceFilepath" | cut -d ' ' -f 1; ):${_Php_sourceFilepath}";
+
 # shellcheck disable=SC2034
-declare -r SHELL_LIB_PHP="$_Php_sourceFilepath";
+readonly SHELL_LIB_PHP;
 
 # ----------------------------------------------------------------
 # ////////////////////////////////////////////////////////////////
@@ -40,7 +44,7 @@ Php_CsFixerDiff()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '!?-e;?-o;?-d;?-s;-c' \
         "$@" \
     || return $?;
@@ -280,7 +284,7 @@ Php_CsFixerWrite()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '!?-e;-f' \
         "$@" \
     || return $?;

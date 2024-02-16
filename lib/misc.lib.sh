@@ -29,16 +29,67 @@ declare _Misc_sourceDirpath; _Misc_sourceDirpath="$( dirname -- "$_Misc_sourceFi
 
 [[ ! -f "$_Misc_sourceFilepath" || ! -d "$_Misc_sourceDirpath" ]] && exit 99;
 
+# Integrity
+# ----------------------------------------------------------------
+
+(
+    _verifyChecksum() {
+        declare __filepath="$1";
+        declare __dirpath="$2";
+        shift 2;
+
+        # ----------------
+
+        [[ ! -f "$__filepath" ]] && return 2;
+
+        declare checksumFilepath="${__filepath}.sha256sum";
+
+        [[ ! -f "$checksumFilepath" ]] && return "${STRICT_INTEGRITY:-0}";
+        [[ ! -d "$__dirpath" || ! -x "$__dirpath" ]] && return 2;
+
+        declare checkStatus=0;
+        pushd -- "$__dirpath" > '/dev/null' || return 1;
+        sha256sum -c --strict --status -- "$checksumFilepath" > '/dev/null' || declare checkStatus=$?;
+        popd > '/dev/null' || return 1;
+
+        return "$checkStatus";
+    }
+
+    _verifyChecksum "$_Misc_sourceFilepath" "$_Misc_sourceDirpath";
+) || {
+    printf -- $'Failed to self-verify file integrity: \'%s\'.\n' "$_Misc_sourceFilepath" >&2;
+
+    exit 98;
+}
+
 # Libraries
 # ----------------------------------------------------------------
 
-export SHELL_LIBS_DIRPATH="$_Misc_sourceDirpath"; [[ -d "$SHELL_LIBS_DIRPATH" ]] || exit 98;
+for SHELL_LIBS_DIRPATH in \
+    "${_Misc_sourceDirpath}/../lib" \
+    "${_Misc_sourceDirpath}/lib" \
+    "${SHELL_LIBS_DIRPATH-$_Misc_sourceDirpath}";
+do
+    [[ -d "$SHELL_LIBS_DIRPATH" ]] && break;
+done
 
-# shellcheck disable=SC1091
-[[ "${SHELL_LIB_OPTIONS:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/options.lib.sh" && [[ "${SHELL_LIB_OPTIONS:+s}" != '' ]] || exit 97; };
+{
+    [[ -d "${SHELL_LIBS_DIRPATH-}" ]] && export SHELL_LIBS_DIRPATH &&
+    { [[ -v SHELL_LIB_OPTIONS ]] || . "${SHELL_LIBS_DIRPATH}/options.lib.sh"; } &&
+        [[ "${SHELL_LIB_OPTIONS%%\:*}" == '40ee3c20078019e5308f03ad5451af724b66a5185e802c5c74dce08a0c07966d' ]]
+} || {
+    printf -- $'Failed to source libraries to \'%s\' from \'%s\'.\n' \
+        "$_Misc_sourceFilepath" "$SHELL_LIBS_DIRPATH" 1>&2;
+
+    exit 97;
+}
+
+# --------------------------------
+
+declare SHELL_LIB_MISC; SHELL_LIB_MISC="$( sha256sum -b -- "$_Misc_sourceFilepath" | cut -d ' ' -f 1; ):${_Misc_sourceFilepath}";
 
 # shellcheck disable=SC2034
-declare -r SHELL_LIB_MISC="$_Misc_sourceFilepath";
+readonly SHELL_LIB_MISC;
 
 # ----------------------------------------------------------------
 # ////////////////////////////////////////////////////////////////

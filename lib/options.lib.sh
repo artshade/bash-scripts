@@ -1,6 +1,6 @@
 #! /usr/bin/env bash
 
-# Copyright 2016-2023 Artfaith
+# Copyright 2016-2024 Artfaith
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -74,13 +74,13 @@
 # @todo Add/Replace current options of "Options" library to something more sensible like `-v` to add a validation rule, `-r` for a replace rule, and
 #   `--` having mandatory highlighting the start of actual options to parse. The reference variable could be the first, options patterns the second,
 #   anything else is next, and the last - `--` to state the end of "Options" options and start of anything to process/parse.
-#   For example: `Options args '!?-a;?-b;?-c:--cc;-d' -s '1101' -v '0/[0-9]' -v '1' -r '2/[a-b]+' 'C' -- "$@" || return $?;`.
+#   For example: `_options args '!?-a;?-b;?-c:--cc;-d' -s '1101' -v '0/[0-9]' -v '1' -r '2/[a-b]+' 'C' -- "$@" || return $?;`.
 # @todo Probably add "-%" option for "Options" to use for comments in multi-line calls (just in case?).
-#   For example, `Options args '-a;-b' -0 '"-a" - Append changes' -- "$@"`.
-# @todo Probably allow declaring option patters in separate options like `Options args -o '!?-a' 'Description' -o '?-b' -o '-c' -- "$@"`.
+#   For example, `_options args '-a;-b' -0 '"-a" - Append changes' -- "$@"`.
+# @todo Probably allow declaring option patters in separate options like `_options args -o '!?-a' 'Description' -o '?-b' -o '-c' -- "$@"`.
 # @todo Reconsider an addition to "{reference}C" or option provided/set count. Is it possible to set a named variable reference to an associative array?
 #   If so, would it be also convenient to return an array which would have set for provided/set actual options, and unset for those which were not found?
-# @todo Fix an issue with no plain values found with no pattern provided (e.g. `declare args; Options args '/' "$@" || return $?; echo "${args[@]}"; unset args;`).
+# @todo Fix an issue with no plain values found with no pattern provided (e.g. `declare args; _options args '/' "$@" || return $?; echo "${args[@]}"; unset args;`).
 # @todo Add rules to specify conflicting options (e.g. option '-a' cannot bet set with option '-b' set, too).
 # @todo Add rules to specify overloading/overwriting options of the same type (e.g. if parameters '?-a' and '?-b' are both set, `-b` overwrites argument of '-a').
 
@@ -90,13 +90,51 @@
 # Initials
 # ----------------------------------------------------------------
 
-declare _Options_sourceFilepath; _Options_sourceFilepath="$( readlink -fn -- "${BASH_SOURCE[0]:-$0}" 2> '/dev/null'; )"; readonly _Options_sourceFilepath;
-declare _Options_sourceDirpath; _Options_sourceDirpath="$( dirname -- "$_Options_sourceFilepath" 2> '/dev/null'; )"; readonly _Options_sourceDirpath;
+declare _Options_sourceFilepath; _Options_sourceFilepath="$( readlink -fn -- "${BASH_SOURCE[0]:-$0}"; )"; readonly _Options_sourceFilepath;
+declare _Options_sourceDirpath; _Options_sourceDirpath="$( dirname -- "$_Options_sourceFilepath"; )"; readonly _Options_sourceDirpath;
 
 [[ ! -f "$_Options_sourceFilepath" || ! -d "$_Options_sourceDirpath" ]] && exit 99;
 
+# Integrity
+# ----------------------------------------------------------------
+
+(
+    _verifyChecksum() {
+        declare __filepath="$1";
+        declare __dirpath="$2";
+        shift 2;
+
+        # ----------------
+
+        [[ ! -f "$__filepath" ]] && return 2;
+
+        declare checksumFilepath="${__filepath}.sha256sum";
+
+        [[ ! -f "$checksumFilepath" ]] && return "${STRICT_INTEGRITY:-0}";
+        [[ ! -d "$__dirpath" || ! -x "$__dirpath" ]] && return 2;
+
+        declare checkStatus=0;
+        pushd -- "$__dirpath" > '/dev/null' || return 1;
+        sha256sum -c --strict --status -- "$checksumFilepath" > '/dev/null' || declare checkStatus=$?;
+        popd > '/dev/null' || return 1;
+
+        return "$checkStatus";
+    }
+
+    _verifyChecksum "$_Options_sourceFilepath" "$_Options_sourceDirpath";
+) || {
+    printf -- $'Failed to self-verify file integrity: \'%s\'.\n' "$_Options_sourceFilepath" >&2;
+
+    exit 98;
+}
+
+# Libraries
+# ----------------------------------------------------------------
+
+declare SHELL_LIB_OPTIONS; SHELL_LIB_OPTIONS="$( sha256sum -b -- "$_Options_sourceFilepath" | cut -d ' ' -f 1; ):${_Options_sourceFilepath}";
+
 # shellcheck disable=SC2034
-declare -r SHELL_LIB_OPTIONS="$_Options_sourceFilepath";
+readonly SHELL_LIB_OPTIONS;
 
 # ----------------------------------------------------------------
 # ////////////////////////////////////////////////////////////////
@@ -186,7 +224,7 @@ declare -r _Options_optionShortCombinedPrefix='-';
 # Functions
 # ----------------------------------------------------------------
 
-Options()
+_options()
 {
     # Variables
     # ----------------------------------------------------------------
@@ -1289,7 +1327,7 @@ Options()
                 echo -n "# Unparsed initials (${#_Options_A[@]}): "; Options_printArray -k -p ' ' -e -- "${_Options_A[@]}"; printf -- '\n';
                 echo '# ---';
                 printf -- '# Unparsed patterns (%s)' "${#_Options_U[@]}";
-                
+
                 if (( ${#_Options_U[@]} > 0 ));
                 then
                     printf -- ': ';
@@ -1297,7 +1335,7 @@ Options()
                 fi
 
                 printf -- '\n# Parsed unsplit parameters (%s)' "${#_Options_UP[@]}";
-                
+
                 if (( ${#_Options_UP[@]} > 0 ));
                 then
                     printf -- ': ';
@@ -1305,7 +1343,7 @@ Options()
                 fi
 
                 printf -- '\n# Parsed split parameters (%s)' "${#_Options_P[@]}";
-                
+
                 if (( ${#_Options_P[@]} > 0 ));
                 then
                     printf -- ': ';
@@ -1313,7 +1351,7 @@ Options()
                 fi
 
                 printf -- '\n# Parsed unsplit flags (%s)' "${#_Options_UF[@]}";
-                
+
                 if (( ${#_Options_UF[@]} > 0 ));
                 then
                     printf -- ': ';
@@ -1321,7 +1359,7 @@ Options()
                 fi
 
                 printf -- '\n# Parsed split flags (%s)' "${#_Options_F[@]}";
-                
+
                 if (( ${#_Options_F[@]} > 0 ));
                 then
                     printf -- ': ';
@@ -1332,7 +1370,7 @@ Options()
                 echo -n "# Validation default mode: '${_Options_validateModeDefault}'"; printf -- '\n';
                 echo -n "# Validation default expression: '${_Options_validateExpressionDefault}'"; printf -- '\n';
                 printf -- '# Validation modes (%s)' "${#_Options_validateModes[@]}";
-                
+
                 if (( ${#_Options_validateModes[@]} > 0 ));
                 then
                     printf -- ': ';
@@ -1340,7 +1378,7 @@ Options()
                 fi
 
                 printf -- '\n# Validation rules (%s)' "${#_Options_validateExpressions[@]}";
-                
+
                 if (( ${#_Options_validateExpressions[@]} > 0 ));
                 then
                     printf -- ': ';
@@ -1456,7 +1494,7 @@ Options()
                 printf -- '# \n';
 
                 # Plain values (print if available).
-                
+
                 if (( parsedPlainCount > 0 ));
                 then
                     printf -- '# Plain values (total %s of %s):\n# │\n' "$parsedPlainCount" "$parsedItemsCount";
@@ -2357,7 +2395,7 @@ Options()
 
                 return "$_Options_RC";
             fi
-            
+
             # Try validating the unset parameter or default flag value
             if ! Options_validateValue -v "$patternIndex";
             then
