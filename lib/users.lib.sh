@@ -32,7 +32,7 @@ Users_PrintUserInfo()
     # Options
     # ------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '/0/^(?:0|[1-9][0-9]*)$' \
         '!?--uid:-u' \
         "$@" \
@@ -84,7 +84,7 @@ Users_AddUser()
     # Options
     # ------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '/0/^(?:0|[1-9][0-9]*)$' \
         '/1/^(?:0|[1-9][0-9]*)$' \
         '//5?' '/bin/bash' \

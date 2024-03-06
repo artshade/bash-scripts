@@ -10,18 +10,79 @@ declare _Shell_sourceDirpath; _Shell_sourceDirpath="$( dirname -- "$_Shell_sourc
 
 [[ ! -f "$_Shell_sourceFilepath" || ! -d "$_Shell_sourceDirpath" ]] && exit 99;
 
+# Integrity
+# ----------------------------------------------------------------
+
+[[ "${SHELL_SELF_INTEGRITY-1}" == 0 ]] ||
+(
+    _verifyChecksum() {
+        declare __filepath="$1";
+        declare __dirpath="$2";
+        shift 2;
+
+        # ----------------
+
+        [[ ! -f "$__filepath" ]] && return 2;
+
+        declare checksumFilepath="${__filepath}.sha256sum";
+
+        [[ ! -f "$checksumFilepath" ]] && {
+            (( SHELL_STRICT_SELF_INTEGRITY )) && return 2;
+
+            return 0;
+        };
+
+        [[ ! -d "$__dirpath" || ! -x "$__dirpath" ]] && return 2;
+
+        declare checkStatus=0;
+        pushd -- "$__dirpath" > '/dev/null' || return 1;
+        sha256sum -c --strict --status -- "$checksumFilepath" > '/dev/null' || declare checkStatus=$?;
+        popd > '/dev/null' || return 1;
+
+        return "$checkStatus";
+    }
+
+    _verifyChecksum "$_Shell_sourceFilepath" "$_Shell_sourceDirpath";
+) || {
+    printf -- $'Failed to self-verify file integrity: \'%s\'.\n' "$_Shell_sourceFilepath" >&2;
+
+    exit 98;
+}
+
 # Libraries
 # ----------------------------------------------------------------
 
-export SHELL_LIBS_DIRPATH="$_Shell_sourceDirpath"; [[ -d "$SHELL_LIBS_DIRPATH" ]] || exit 98;
+for SHELL_LIBS_DIRPATH in \
+    "${_Shell_sourceDirpath}/../lib" \
+    "${_Shell_sourceDirpath}/lib" \
+    "${SHELL_LIBS_DIRPATH:-$_Shell_sourceDirpath}";
+do
+    [[ -d "$SHELL_LIBS_DIRPATH" ]] && break;
+done
 
-# shellcheck disable=SC1091
-[[ "${SHELL_LIB_OPTIONS:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/options.lib.sh" && [[ "${SHELL_LIB_OPTIONS:+s}" != '' ]] || exit 97; };
-# shellcheck disable=SC1091
-[[ "${SHELL_LIB_MISC:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/misc.lib.sh" && [[ "${SHELL_LIB_MISC:+s}" != '' ]] || exit 97; };
+{
+    # shellcheck disable=SC1091
+    [[ -d "${SHELL_LIBS_DIRPATH-}" ]] && export SHELL_LIBS_DIRPATH &&
+    { [[ -v SHELL_LIB_OPTIONS ]] || . "${SHELL_LIBS_DIRPATH}/options.lib.sh"; } &&
+    { [[ -v SHELL_LIB_MISC ]] || . "${SHELL_LIBS_DIRPATH}/misc.lib.sh"; }
+    [[
+        "${SHELL_LIBS_INTEGRITY-1}" == 0 ||
+        '4ae5b061799db1f2114c68071e8e0dc4da416976c282166efdc6c557f27a304e' == "${SHELL_LIB_OPTIONS%%\:*}" &&
+        '280ebccb12f72aa800a1571bd2419185fc197b76565cfae5fae1acbc8bcd18a0' == "${SHELL_LIB_MISC%%\:*}"
+    ]]
+} || {
+    printf -- $'Failed to source libraries to \'%s\' from directory \'%s\'.\n' \
+        "$_Shell_sourceFilepath" "$SHELL_LIBS_DIRPATH" 1>&2;
+
+    exit 97;
+}
+
+# --------------------------------
+
+declare SHELL_LIB_SHELL; SHELL_LIB_SHELL="$( sha256sum -b -- "$_Shell_sourceFilepath" | cut -d ' ' -f 1; ):${_Shell_sourceFilepath}";
 
 # shellcheck disable=SC2034
-declare -r SHELL_LIB_SHELL="$_Shell_sourceFilepath";
+readonly SHELL_LIB_SHELL;
 
 # ----------------------------------------------------------------
 # ////////////////////////////////////////////////////////////////
@@ -41,7 +102,7 @@ Shell_Options()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '?-o;?-i;-s;-l;-k;-p;-f;-r;-R;-F;--forget-all' \
         "$@" \
     || return $?;
@@ -286,7 +347,7 @@ Shell_Execute()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '?-o' \
         "$@" \
     || return $?;
@@ -495,7 +556,7 @@ Shell_ExecuteAs() {
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args; _options args '11' \
         '/0/^(?:0|[1-9][0-9]*)$' \
         '/1/^(?:0|[1-9][0-9]*)$' \
         '/5' \
@@ -535,7 +596,7 @@ Shell_ExecuteAs() {
 #    fi
 
     # If shell command
-    if (( argsC[2] ));
+    if (( ${#__command} ));
     then
         # echo 'Shell command';
 
@@ -564,8 +625,6 @@ Shell_ExecuteAs() {
 
         return 0;
     fi
-
-    unset argsC;
 
     # If script or any file
     if [[ "$__scriptFilepath" != '' || "$__filepath" != '' ]];

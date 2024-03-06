@@ -32,7 +32,7 @@ Git_PrintBranch()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '/0/^(?:0|[1-9][0-9]*)$' \
         '?-t;?-r' \
         "$@" \
@@ -78,7 +78,7 @@ Git_PrintDiff()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '?-d;?-s;-n;-r' \
         "$@" \
     || return $?;

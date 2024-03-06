@@ -8,6 +8,78 @@ declare _sourceDirpath; _sourceDirpath="$( dirname -- "$_sourceFilepath"; )"; re
 
 [[ ! -f "$_sourceFilepath" || ! -d "$_sourceDirpath" ]] && exit 99;
 
+# Integrity
+# ----------------------------------------------------------------
+
+[[ "${SHELL_SELF_INTEGRITY-1}" == 0 ]] ||
+(
+    _verifyChecksum() {
+        declare __filepath="$1";
+        declare __dirpath="$2";
+        shift 2;
+
+        # ----------------
+
+        [[ ! -f "$__filepath" ]] && return 2;
+
+        declare checksumFilepath="${__filepath}.sha256sum";
+
+        [[ ! -f "$checksumFilepath" ]] && {
+            (( SHELL_STRICT_SELF_INTEGRITY )) && return 2;
+
+            return 0;
+        };
+
+        [[ ! -d "$__dirpath" || ! -x "$__dirpath" ]] && return 2;
+
+        declare checkStatus=0;
+        pushd -- "$__dirpath" > '/dev/null' || return 1;
+        sha256sum -c --strict --status -- "$checksumFilepath" > '/dev/null' || declare checkStatus=$?;
+        popd > '/dev/null' || return 1;
+
+        return "$checkStatus";
+    }
+
+    _verifyChecksum "$_sourceFilepath" "$_sourceDirpath";
+) || {
+    printf -- $'Failed to self-verify file integrity: \'%s\'.\n' "$_sourceFilepath" >&2;
+
+    exit 98;
+}
+
+# Libraries
+# ----------------------------------------------------------------
+
+for SHELL_LIBS_DIRPATH in \
+    "${_sourceDirpath}/../lib" \
+    "${_sourceDirpath}/lib" \
+    "${SHELL_LIBS_DIRPATH:-$_sourceDirpath}";
+do
+    [[ -d "$SHELL_LIBS_DIRPATH" ]] && break;
+done
+
+{
+    # shellcheck disable=SC1091
+    [[ -d "${SHELL_LIBS_DIRPATH-}" ]] && export SHELL_LIBS_DIRPATH &&
+    { [[ -v SHELL_LIB_OPTIONS ]] || . "${SHELL_LIBS_DIRPATH}/options.lib.sh"; } &&
+    { [[ -v SHELL_LIB_MISC ]] || . "${SHELL_LIBS_DIRPATH}/misc.lib.sh"; } &&
+    { [[ -v SHELL_LIB_PHP ]] || . "${SHELL_LIBS_DIRPATH}/php.lib.sh"; } &&
+    [[
+        "${SHELL_LIBS_INTEGRITY-1}" == 0 ||
+        '4ae5b061799db1f2114c68071e8e0dc4da416976c282166efdc6c557f27a304e' == "${SHELL_LIB_OPTIONS%%\:*}" &&
+        '280ebccb12f72aa800a1571bd2419185fc197b76565cfae5fae1acbc8bcd18a0' == "${SHELL_LIB_MISC%%\:*}" &&
+        '0b73061766bc18412fbc6cb672fbc1fe5e6df5bcdf3675d7eb595ffd9c4edbaa' == "${SHELL_LIB_PHP%%\:*}"
+    ]]
+} || {
+    printf -- $'Failed to source libraries to \'%s\' from directory \'%s\'.\n' \
+        "$_sourceFilepath" "$SHELL_LIBS_DIRPATH" 1>&2;
+
+    exit 97;
+}
+
+# ----------------------------------------------------------------
+# ////////////////////////////////////////////////////////////////
+
 # Functions
 # ----------------------------------------------------------------
 
@@ -101,7 +173,16 @@ _main()
     # --------------------------------
 
     printf '\n';
-    _generateDirChecksum "$__dirpath" '.+\.sh$';
+    # _generateDirChecksum "$__dirpath" '.+\.sh$';
+
+    find "$_sourceDirpath" \
+            -iregex '.*\.sh$' \
+            -execdir bash -c $'printf -- "// Directory: \'%s\'\n" "$( pwd -P; )"; sha256sum -b -- "$1" | tee -- "${1}.sha256sum";' - {} \;;
+
+    find "$__dirpath" \
+            -iregex '.*\.sh$' \
+            -execdir bash -c $'printf -- "// Directory: \'%s\'\n" "$( pwd -P; )"; sha256sum -b -- "$1" | tee -- "${1}.sha256sum";' - {} \;;
+
     printf '\n';
 }
 

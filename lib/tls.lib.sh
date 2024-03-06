@@ -55,7 +55,7 @@ TLS_SSLGenerateConfig()
     # Options
     # --------------------------------
 
-    declare args; Options args '/' \
+    declare args; _options args '/' \
         '!?-o;!?-t;!?-c;!?--ca-subject-o;!?--ca-subject-ou;!?--ca-subject-cn;!?--subject-cn;!?--subject-c;!?--subject-st;!?--subject-l;!?--subject-o;!?--subject-ou;!?--subject-ea' \
         "$@" \
     || return $?;
@@ -161,7 +161,7 @@ TLS_SSLGenerate()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '/4/^(?:0|[1-9][0-9]*)$' \
         '//4?' 256 \
         '!?-o;!?-p;!?-t;!?-c;?-P;!?--ca-subject-o;!?--ca-subject-ou;!?--ca-subject-cn;!?--subject-cn;!?--subject-c;!?--subject-st;!?--subject-l;!?--subject-o;!?--subject-ou;!?--subject-ea;-S;-r' \

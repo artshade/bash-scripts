@@ -32,7 +32,7 @@ Docker_ContainerId()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '--service:-s;--running:-r' \
         "$@" \
     || return $?;
@@ -102,7 +102,7 @@ Docker_ContainerName()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '--service:-s;--running:-r' \
         "$@" \
     || return $?;
@@ -172,7 +172,7 @@ Docker_IsContainer()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '--running:-r;--service:-s;--name:-n' \
         "$@" \
     || return $?;
@@ -229,7 +229,7 @@ Docker_Execute()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '/0' \
         '/2/^(?:0|[1-9][0-9]*)(?:\:(?:0|[1-9][0-9]*))?$' \
         '/3' \
@@ -451,7 +451,7 @@ Docker_Execute()
 
         declare commandOptions; commandOptions=();
         declare filepath;
-        declare scriptFile=0;
+        # declare scriptFile=0;
         declare randomFilename; randomFilename="$( Misc_RandomString -l 16; )";
         declare tempFilepath="/tmp/${randomFilename}";
 
@@ -464,7 +464,7 @@ Docker_Execute()
                 return 2;
             fi
 
-            declare scriptFile=1;
+            # declare scriptFile=1;
             declare filepath="$__scriptFilepath";
 
             # docker cp or docker compose cp

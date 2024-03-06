@@ -32,6 +32,7 @@ declare _Misc_sourceDirpath; _Misc_sourceDirpath="$( dirname -- "$_Misc_sourceFi
 # Integrity
 # ----------------------------------------------------------------
 
+[[ "${SHELL_SELF_INTEGRITY-1}" == 0 ]] ||
 (
     _verifyChecksum() {
         declare __filepath="$1";
@@ -44,7 +45,12 @@ declare _Misc_sourceDirpath; _Misc_sourceDirpath="$( dirname -- "$_Misc_sourceFi
 
         declare checksumFilepath="${__filepath}.sha256sum";
 
-        [[ ! -f "$checksumFilepath" ]] && return "${STRICT_INTEGRITY:-0}";
+        [[ ! -f "$checksumFilepath" ]] && {
+            (( SHELL_STRICT_SELF_INTEGRITY )) && return 2;
+
+            return 0;
+        };
+
         [[ ! -d "$__dirpath" || ! -x "$__dirpath" ]] && return 2;
 
         declare checkStatus=0;
@@ -68,17 +74,21 @@ declare _Misc_sourceDirpath; _Misc_sourceDirpath="$( dirname -- "$_Misc_sourceFi
 for SHELL_LIBS_DIRPATH in \
     "${_Misc_sourceDirpath}/../lib" \
     "${_Misc_sourceDirpath}/lib" \
-    "${SHELL_LIBS_DIRPATH-$_Misc_sourceDirpath}";
+    "${SHELL_LIBS_DIRPATH:-$_Misc_sourceDirpath}";
 do
     [[ -d "$SHELL_LIBS_DIRPATH" ]] && break;
 done
 
 {
+    # shellcheck disable=SC1091
     [[ -d "${SHELL_LIBS_DIRPATH-}" ]] && export SHELL_LIBS_DIRPATH &&
-    { [[ -v SHELL_LIB_OPTIONS ]] || . "${SHELL_LIBS_DIRPATH}/options.lib.sh"; } &&
-        [[ "${SHELL_LIB_OPTIONS%%\:*}" == '40ee3c20078019e5308f03ad5451af724b66a5185e802c5c74dce08a0c07966d' ]]
+    { [[ -v SHELL_LIB_OPTIONS ]] || . "${SHELL_LIBS_DIRPATH}/options.lib.sh"; }
+    [[
+        "${SHELL_LIBS_INTEGRITY-1}" == 0 ||
+        '4ae5b061799db1f2114c68071e8e0dc4da416976c282166efdc6c557f27a304e' == "${SHELL_LIB_OPTIONS%%\:*}"
+    ]]
 } || {
-    printf -- $'Failed to source libraries to \'%s\' from \'%s\'.\n' \
+    printf -- $'Failed to source libraries to \'%s\' from directory \'%s\'.\n' \
         "$_Misc_sourceFilepath" "$SHELL_LIBS_DIRPATH" 1>&2;
 
     exit 97;
@@ -269,32 +279,18 @@ Misc_ArrayP()
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args; _options args '11' \
+        '//1?' '%s' \
         '?-d;?-f;-k;-e' \
         "$@" \
     || return $?;
 
-    declare __delimiter="${args[0]}";
+    declare __delimiter=( "${args0[@]-, }" );
     declare __format="${args[1]}";
     declare __printKeys="${args[2]}";
     declare __printExtended="${args[3]}";
     declare __items=( "${args[@]:4}" );
     unset args;
-
-    # Defaults
-    # ----------------
-
-    if [[ "${argsC[0]}" == 0 ]];
-    then
-        declare __delimiter=', ';
-    fi
-
-    if [[ "$__format" == '' ]];
-    then
-        declare __format=$'\'%s\'';
-    fi
-
-    unset argsC;
 
     # Main
     # --------------------------------
@@ -320,11 +316,12 @@ Misc_ArrayP()
             printf -- "[%${#itemCount}s]=" "$itemIndex";
         fi
 
+        # shellcheck disable=SC2059
         printf -- "$__format" "${__items[$itemIndex]}";
 
         if (( itemIndex + 1 < ${#__items[@]} ));
         then
-            printf '%s' "$__delimiter";
+            printf '%s' "${__delimiter[0]}";
         fi
 
         if (( __printExtended > 0 ));
@@ -346,10 +343,9 @@ Misc_PrintArray()
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args;_options args '11' \
         '/0/^[A-Za-z_][0-9A-Za-z_]*$' \
         '/4/^.$' \
-        '//1?' ', ' \
         '//3?' '  ' \
         '//5?' $'\'' \
         '//6?' $'\'' \
@@ -358,7 +354,7 @@ Misc_PrintArray()
     || return $?;
 
     declare __referenceName="${args[0]}"; # ?-a:--array
-    declare __delimiter="${args[1]}"; # ?-d
+    declare __delimiter=( "${args1[@]-, }" ); # ?-d
     declare __format="${args[2]}"; # ?-f
     declare __margin="${args[3]}"; # ?-m
     declare __paddingChar="${args[4]}"; # ?-c
@@ -480,7 +476,7 @@ Misc_PrintArray()
             else
                 if (( itemIndex + 1 < itemCount ));
                 then
-                    printf '%s' "$__delimiter";
+                    printf '%s' "${__delimiter[0]}";
                 fi
             fi
 
@@ -574,7 +570,7 @@ Misc_PrintArray()
         else
             if (( itemIndex + 1 < itemCount ));
             then
-                printf '%s' "$__delimiter";
+                printf '%s' "${__delimiter[0]}";
             fi
         fi
     done
@@ -602,16 +598,19 @@ Misc_RandomInteger()
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args;_options args '11' \
         '/0/^(?:0|[1-9][0-9]*)\-?(?:0|[1-9][0-9]*)?$' \
         '/1/^(?:0|[1-9][0-9]*)$' \
-        '?--range:-m:-r:-n;?-c;?-d;?-f' \
+        '//3?' '%s' `
+        `'?--range:-m:-r:-n;'`
+        `'?-c;?-d;'`
+        `'?-f' \
         "$@" \
     || return $?;
 
     declare __range="${args[0]}";
     declare __count="${args[1]}";
-    declare __delimiter="${args[2]}";
+    declare __delimiter=( "${args2[@]-$'\n'}" );
     declare __format="${args[3]}";
     unset args;
 
@@ -621,18 +620,6 @@ Misc_RandomInteger()
     then
         declare __count=1;
     fi
-
-    if [[ "${argsC[3]}" == 0 ]];
-    then
-        declare __delimiter=$'\n';
-    fi
-
-    if [[ "$__format" == '' ]];
-    then
-        declare __format='%s';
-    fi
-
-    unset argsC;
 
     # Main
     # --------------------------------
@@ -664,18 +651,19 @@ Misc_RandomInteger()
 
     for (( iteration = 0; iteration < __count; iteration++ ));
     do
-        declare value; value="$( shuf --random-source='/dev/urandom' -i "${__min}-${__max}" -n 1 2>> '/dev/null'; )";
+        declare value;
 
-        if [[ $? != 0 ]];
+        if ! value="$( shuf --random-source='/dev/urandom' -i "${__min}-${__max}" -n 1 2>> '/dev/null'; )";
         then
             return 2;
         fi
 
+        # shellcheck disable=SC2059
         printf -- "${__format}" "$value";
 
         if (( iteration + 1 < __count ));
         then
-            printf '%s' "$__delimiter";
+            printf '%s' "${__delimiter[0]}";
         fi
     done
 
@@ -687,7 +675,7 @@ Misc_RandomString()
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args;_options args '11' \
         '/0/^(?:0|[1-9][0-9]*)$' \
         '/1/^(?:0|[1-9][0-9]*)$' \
         '?-l;?-c;?-d;?-f;?-s' \
@@ -696,7 +684,7 @@ Misc_RandomString()
 
     declare __length="${args[0]}";
     declare __count="${args[1]}";
-    declare __delimiter="${args[2]}";
+    declare __delimiter=( "${args2[@]-$'\n'}" );
     declare __format="${args[3]}";
     declare __characterSet="${args[4]}";
     unset args;
@@ -713,11 +701,6 @@ Misc_RandomString()
         declare __count=1;
     fi
 
-    if [[ "${argsC[2]}" == 0 ]];
-    then
-        declare __delimiter=$'\n';
-    fi
-
     if [[ "$__format" == '' ]];
     then
         declare __format='%s';
@@ -728,8 +711,6 @@ Misc_RandomString()
         declare __characterSet="$Misc_RandomString_characterSetDefault";
     fi
 
-    unset argsC;
-
     # Main
     # --------------------------------
 
@@ -737,18 +718,19 @@ Misc_RandomString()
 
     for (( iteration = 0; iteration < __count; iteration++ ));
     do
-        declare value; value="$( head '/dev/urandom' | tr -dc "$__characterSet" | head -c "$__length" 2>> '/dev/null'; )";
+        declare value;
 
-        if [[ $? != 0 ]];
+        if ! value="$( head '/dev/urandom' | tr -dc "$__characterSet" | head -c "$__length" 2>> '/dev/null'; )";
         then
             return 1;
         fi
 
+        # shellcheck disable=SC2059
         printf -- "${__format}" "$value";
 
         if (( iteration + 1 < __count ));
         then
-            printf '%s' "$__delimiter";
+            printf '%s' "${__delimiter[0]}";
         fi
     done
 
@@ -777,24 +759,18 @@ Misc_Regex()
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args;_options args '11' \
         '!?-s;?-r;-c;-t;-i' \
         "$@" \
     || return $?;
 
     declare __searchRegex="${args[0]}";
-    declare __replacement="${args[1]}";
+    declare __replacement=( "${args1[@]}" );
     declare __printMatchCount="${args[2]}";
     declare __printTotal="${args[3]}";
     declare __ignoreCount="${args[4]}";
     declare __items=( "${args[@]:5}" );
     unset args;
-
-    # If no regex replace was provided
-    if (( argsC[1] == 0 ));
-    then
-        unset __replacement;
-    fi
 
     # Main
     # --------------------------------
@@ -810,7 +786,7 @@ Misc_Regex()
     declare itemMatchCount=0;
 
     # If no replacement is provided
-    if [[ "${__replacement+s}" == '' ]];
+    if (( ! ${#__replacement[@]} ));
     then
         # Search only
 
@@ -869,7 +845,7 @@ Misc_Regex()
             IFS=$' \t\n' \
             ITEM="$item" \
             SEARCH_REGEX="$__searchRegex" \
-            REPLACEMENT="$__replacement" \
+            REPLACEMENT="${__replacement[0]}" \
             PRINT_COUNT="$__printMatchCount" \
                 perl -e $'
                     use strict;
@@ -914,7 +890,7 @@ Misc_Regex()
 #     # Options
 #     # --------------------------------
 
-#     declare args argsC; Options args '11' \
+#     declare args argsC;_options args '11' \
 #         '!?-s;?-r;-f' \
 #         "$@" \
 #     || return $?;
@@ -1026,7 +1002,7 @@ Misc_AdvancedRegex()
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args;_options args '11' \
         '/3/^(?:[0-9]+)?(?:,)?(?:[0-9]+)?$' \
         '/4/^[0-1]$' \
         '/5/^[0-4]$' \
@@ -1037,13 +1013,12 @@ Misc_AdvancedRegex()
 
     declare patternSearch="${args[0]}";
     declare outputVariableReferenceName="${args[1]}";
-    unset patternReplace;
-    [ "${argsC[2]}" != 0 ] && declare patternReplace="${args[2]}";
+    declare patternReplace=( "${args2[@]}" );
     declare matchCountMinMax="${args[3]}";
     declare streamsOutput="${args[4]}";
     declare removeEmptyLines="${args[5]}";
     declare data=( "${args[@]:6}" );
-    unset args argsC;
+    unset args;
 
     # Defaults
     # ----------------
@@ -1146,7 +1121,7 @@ Misc_AdvancedRegex()
     fi
 
     # If a replace pattern is declared (even empty)
-    if [ "${patternReplace+s}" != '' ];
+    if (( ${#patternReplace[@]} ));
     then
         # Search and replace
         # --------------------------------
@@ -1188,7 +1163,7 @@ Misc_AdvancedRegex()
         fi
 
         export patternSearchExported="$patternSearch";
-        export patternReplaceExported="$patternReplace";
+        export patternReplaceExported="${patternReplace[0]}";
         export removeEmptyLinesExported="$removeEmptyLines";
         declare replaceOffsets=();
         declare replaceSkips=();
@@ -1758,6 +1733,7 @@ Misc_ArrayJoin()
 
     for (( index = 1; index <= $#; index++ ));
     do
+        # shellcheck disable=SC2059
         IFS=$' \t\n' printf -- "$pattern" "$prefix" "${!index}" "$postfix"
 
         if (( "$index" < $# ));

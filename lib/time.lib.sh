@@ -10,18 +10,79 @@ declare _Time_sourceDirpath; _Time_sourceDirpath="$( dirname -- "$_Time_sourceFi
 
 [[ ! -f "$_Time_sourceFilepath" || ! -d "$_Time_sourceDirpath" ]] && exit 99;
 
+# Integrity
+# ----------------------------------------------------------------
+
+[[ "${SHELL_SELF_INTEGRITY-1}" == 0 ]] ||
+(
+    _verifyChecksum() {
+        declare __filepath="$1";
+        declare __dirpath="$2";
+        shift 2;
+
+        # ----------------
+
+        [[ ! -f "$__filepath" ]] && return 2;
+
+        declare checksumFilepath="${__filepath}.sha256sum";
+
+        [[ ! -f "$checksumFilepath" ]] && {
+            (( SHELL_STRICT_SELF_INTEGRITY )) && return 2;
+
+            return 0;
+        };
+
+        [[ ! -d "$__dirpath" || ! -x "$__dirpath" ]] && return 2;
+
+        declare checkStatus=0;
+        pushd -- "$__dirpath" > '/dev/null' || return 1;
+        sha256sum -c --strict --status -- "$checksumFilepath" > '/dev/null' || declare checkStatus=$?;
+        popd > '/dev/null' || return 1;
+
+        return "$checkStatus";
+    }
+
+    _verifyChecksum "$_Time_sourceFilepath" "$_Time_sourceDirpath";
+) || {
+    printf -- $'Failed to self-verify file integrity: \'%s\'.\n' "$_Time_sourceFilepath" >&2;
+
+    exit 98;
+}
+
 # Libraries
 # ----------------------------------------------------------------
 
-export SHELL_LIBS_DIRPATH="$_Time_sourceDirpath"; [[ -d "$SHELL_LIBS_DIRPATH" ]] || exit 98;
+for SHELL_LIBS_DIRPATH in \
+    "${_Time_sourceDirpath}/../lib" \
+    "${_Time_sourceDirpath}/lib" \
+    "${SHELL_LIBS_DIRPATH:-$_Time_sourceDirpath}";
+do
+    [[ -d "$SHELL_LIBS_DIRPATH" ]] && break;
+done
 
-# shellcheck disable=SC1091
-[[ "${SHELL_LIB_OPTIONS:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/options.lib.sh" && [[ "${SHELL_LIB_OPTIONS:+s}" != '' ]] || exit 97; };
-# shellcheck disable=SC1091
-[[ "${SHELL_LIB_MISC:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/misc.lib.sh" && [[ "${SHELL_LIB_MISC:+s}" != '' ]] || exit 97; };
+{
+    # shellcheck disable=SC1091
+    [[ -d "${SHELL_LIBS_DIRPATH-}" ]] && export SHELL_LIBS_DIRPATH &&
+    { [[ -v SHELL_LIB_OPTIONS ]] || . "${SHELL_LIBS_DIRPATH}/options.lib.sh"; } &&
+    { [[ -v SHELL_LIB_MISC ]] || . "${SHELL_LIBS_DIRPATH}/misc.lib.sh"; }
+    [[
+        "${SHELL_LIBS_INTEGRITY-1}" == 0 ||
+        '4ae5b061799db1f2114c68071e8e0dc4da416976c282166efdc6c557f27a304e' == "${SHELL_LIB_OPTIONS%%\:*}" &&
+        '280ebccb12f72aa800a1571bd2419185fc197b76565cfae5fae1acbc8bcd18a0' == "${SHELL_LIB_MISC%%\:*}"
+    ]]
+} || {
+    printf -- $'Failed to source libraries to \'%s\' from directory \'%s\'.\n' \
+        "$_Time_sourceFilepath" "$SHELL_LIBS_DIRPATH" 1>&2;
+
+    exit 97;
+}
+
+# --------------------------------
+
+declare SHELL_LIB_TIME; SHELL_LIB_TIME="$( sha256sum -b -- "$_Time_sourceFilepath" | cut -d ' ' -f 1; ):${_Time_sourceFilepath}";
 
 # shellcheck disable=SC2034
-declare -r SHELL_LIB_TIME="$_Time_sourceFilepath";
+readonly SHELL_LIB_TIME;
 
 # ----------------------------------------------------------------
 # ////////////////////////////////////////////////////////////////
@@ -42,7 +103,7 @@ Time_DateTime()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '/0/^[0-9]$' \
         '?-t;?-T;?-F;-l' \
         "$@" \
@@ -132,7 +193,7 @@ Time_Diff()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '?-o;?--format;-s;-d;-k;-p;-f;-r;-F;--forget-all' \
         "$@" \
     || return $?;

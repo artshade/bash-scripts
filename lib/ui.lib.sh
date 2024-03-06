@@ -29,20 +29,81 @@ declare _UI_sourceDirpath; _UI_sourceDirpath="$( dirname -- "$_UI_sourceFilepath
 
 [[ ! -f "$_UI_sourceFilepath" || ! -d "$_UI_sourceDirpath" ]] && exit 99;
 
+# Integrity
+# ----------------------------------------------------------------
+
+[[ "${SHELL_SELF_INTEGRITY-1}" == 0 ]] ||
+(
+    _verifyChecksum() {
+        declare __filepath="$1";
+        declare __dirpath="$2";
+        shift 2;
+
+        # ----------------
+
+        [[ ! -f "$__filepath" ]] && return 2;
+
+        declare checksumFilepath="${__filepath}.sha256sum";
+
+        [[ ! -f "$checksumFilepath" ]] && {
+            (( SHELL_STRICT_SELF_INTEGRITY )) && return 2;
+
+            return 0;
+        };
+
+        [[ ! -d "$__dirpath" || ! -x "$__dirpath" ]] && return 2;
+
+        declare checkStatus=0;
+        pushd -- "$__dirpath" > '/dev/null' || return 1;
+        sha256sum -c --strict --status -- "$checksumFilepath" > '/dev/null' || declare checkStatus=$?;
+        popd > '/dev/null' || return 1;
+
+        return "$checkStatus";
+    }
+
+    _verifyChecksum "$_UI_sourceFilepath" "$_UI_sourceDirpath";
+) || {
+    printf -- $'Failed to self-verify file integrity: \'%s\'.\n' "$_UI_sourceFilepath" >&2;
+
+    exit 98;
+}
+
 # Libraries
 # ----------------------------------------------------------------
 
-export SHELL_LIBS_DIRPATH="$_UI_sourceDirpath"; [[ -d "$SHELL_LIBS_DIRPATH" ]] || exit 98;
+for SHELL_LIBS_DIRPATH in \
+    "${_UI_sourceDirpath}/../lib" \
+    "${_UI_sourceDirpath}/lib" \
+    "${SHELL_LIBS_DIRPATH:-$_UI_sourceDirpath}";
+do
+    [[ -d "$SHELL_LIBS_DIRPATH" ]] && break;
+done
 
-# shellcheck disable=SC1091
-[[ "${SHELL_LIB_OPTIONS:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/options.lib.sh" && [[ "${SHELL_LIB_OPTIONS:+s}" != '' ]] || exit 97; };
-# shellcheck disable=SC1091
-[[ "${SHELL_LIB_MISC:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/misc.lib.sh" && [[ "${SHELL_LIB_MISC:+s}" != '' ]] || exit 97; };
-# shellcheck disable=SC1091
-[[ "${SHELL_LIB_SHELL:+s}" == '' ]] && { . "${SHELL_LIBS_DIRPATH}/shell.lib.sh" && [[ "${SHELL_LIB_SHELL:+s}" != '' ]] || exit 97; };
+{
+    # shellcheck disable=SC1091
+    [[ -d "${SHELL_LIBS_DIRPATH-}" ]] && export SHELL_LIBS_DIRPATH &&
+    { [[ -v SHELL_LIB_OPTIONS ]] || . "${SHELL_LIBS_DIRPATH}/options.lib.sh"; } &&
+    { [[ -v SHELL_LIB_MISC ]] || . "${SHELL_LIBS_DIRPATH}/misc.lib.sh"; } &&
+    { [[ -v SHELL_LIB_SHELL ]] || . "${SHELL_LIBS_DIRPATH}/shell.lib.sh"; }
+    [[
+        "${SHELL_LIBS_INTEGRITY-1}" == 0 ||
+        '4ae5b061799db1f2114c68071e8e0dc4da416976c282166efdc6c557f27a304e' == "${SHELL_LIB_OPTIONS%%\:*}" &&
+        '280ebccb12f72aa800a1571bd2419185fc197b76565cfae5fae1acbc8bcd18a0' == "${SHELL_LIB_MISC%%\:*}" &&
+        '3a7b6f4035a8a09bf43996f052c2a1ff491c8a678867ad24861e226b4dc88601' == "${SHELL_LIB_SHELL%%\:*}"
+    ]]
+} || {
+    printf -- $'Failed to source libraries to \'%s\' from directory \'%s\'.\n' \
+        "$_UI_sourceFilepath" "$SHELL_LIBS_DIRPATH" 1>&2;
+
+    exit 97;
+}
+
+# --------------------------------
+
+declare SHELL_LIB_UI; SHELL_LIB_UI="$( sha256sum -b -- "$_UI_sourceFilepath" | cut -d ' ' -f 1; ):${_UI_sourceFilepath}";
 
 # shellcheck disable=SC2034
-declare -r SHELL_LIB_UI="$_UI_sourceFilepath";
+readonly SHELL_LIB_UI;
 
 # ----------------------------------------------------------------
 # ////////////////////////////////////////////////////////////////
@@ -85,7 +146,7 @@ UI_PrintTable()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '/0/^(?:0|[1-9][0-9]*)$' \
         '!?-c;?-n' \
         "$@" \
@@ -187,7 +248,7 @@ UI_PrintR()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '/0/^(?:0|[1-9][0-9]*)$' \
         '?-c;?-f;-n;-e;-s' \
         "$@" \
@@ -247,7 +308,7 @@ UI_PrintF()
     # Options
     # --------------------------------
 
-    declare args argsT; Options args '101' \
+    declare args argsT; _options args '101' \
         '//0?' '%s' \
         '//4?' '1' \
         '//5?' "$_UI_PrintF_padding" \
@@ -405,7 +466,7 @@ UI_PromptF()
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args argsC; _options args '11' \
         '/3/^(?:0|[1-9][0-9]*)$' \
         '/4/^(?:0|[1-9][0-9]*)$' \
         '/9?/^(?:0|[1-9][0-9]*)?\:?(?:0|[1-9][0-9]*)$' \
@@ -714,7 +775,7 @@ UI_PromptYesNo()
     # Options
     # --------------------------------
 
-    declare args argsC; Options args '11' \
+    declare args argsC; _options args '11' \
         '/1/^(?:0|[1-9][0-9]*)$' \
         '/5/^(?:0|[1-9][0-9]*)?\:?(?:0|[1-9][0-9]*)$' \
         '//5?' :2 \
@@ -800,7 +861,7 @@ UI_GapPrint()
     # Options
     # --------------------------------
 
-    declare args; Options args \
+    declare args; _options args \
         '-s' \
         "$@" \
     || return $?;
@@ -982,7 +1043,7 @@ UI_D_PrintF()
     ###########
 
     # '@3/^(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/' \
-    declare args; Options args \
+    declare args; _options args \
         '/0/^[0-2]$' \
         '/1/^-?[0-5]$' \
         '/2/^[nmqiswefd]$' \
